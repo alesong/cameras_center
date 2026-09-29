@@ -42,6 +42,11 @@ npm run dev               # server :4000 · agent :4100 · web :5173
 
 > 📄 **PC con Ubuntu 24.04 + cámaras EZVIZ:** ver la guía completa en
 > [`docs/UBUNTU.md`](docs/UBUNTU.md) (instalación, red, URLs RTSP, systemd).
+>
+> 📷 **Cámara ya comprobada (O-KAM/EZVIZ, RTSP :10554 `/tcp/av0_0`):**
+> [`docs/CAMARAS-COMPROBADAS.md`](docs/CAMARAS-COMPROBADAS.md).
+>
+> 🗄 **Supabase (auth + persistencia):** [`docs/SUPABASE.md`](docs/SUPABASE.md).
 
 | Servicio | URL |
 |---|---|
@@ -87,7 +92,7 @@ sólo el agent (`/api/agent/cameras`, cabecera `x-agent-token`).
 |---|---|---|
 | **F0** | Monorepo, tipos compartidos, apps mínimas funcionando | ✅ |
 | **F1** | Agent lee 1 cámara RTSP y se ve en el navegador | ✅ |
-| **F2** | Supabase + auth JWT + agent autenticado contra el server | ✅ *(falta pegar `SUPABASE_SERVICE_KEY`)* |
+| **F2** | Supabase + auth JWT + agent autenticado contra el server | ✅ |
 | **F3** | Relay agent → server → web remoto (multi-cámara) | ⬜ |
 | **F4** | Descubrimiento ONVIF + health + thumbnails en Cloudinary | ⬜ |
 | **F5** | API pública con API keys, docs y rate limits | ⬜ |

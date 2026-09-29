@@ -1,6 +1,7 @@
 import { spawn, type ChildProcessByStdio } from "node:child_process";
 import type { Readable } from "node:stream";
 import type { CameraStatus } from "@cameras/protocol";
+import { redactSecrets, redactUrl } from "@cameras/core";
 import { config } from "../config";
 import { buildFfmpegArgs, type SourceSpec } from "./args";
 import { resolveFfmpegPath } from "./ffmpeg";
@@ -161,7 +162,7 @@ export class MjpegPipeline {
     });
 
     this.startWatchdog();
-    console.log(`[pipeline] ▶ ${this.spec.cameraId} ${this.spec.sourceType} (${this.spec.connection.slice(0, 60)})`);
+    console.log(`[pipeline] ▶ ${this.spec.cameraId} ${this.spec.sourceType} (${redactUrl(this.spec.connection).slice(0, 60)})`);
   }
 
   stop() {
@@ -203,7 +204,7 @@ export class MjpegPipeline {
     const delay = Math.min(30000, 500 * 2 ** Math.min(this.restartAttempts, 6));
     this.restartAttempts += 1;
     this.state = this.restartAttempts > 5 ? "error" : "restarting";
-    console.warn(`[pipeline] ↻ reinicio en ${delay} ms — ${this.lastError ?? ""}`);
+    console.warn(`[pipeline] ↻ reinicio en ${delay} ms — ${redactSecrets(this.lastError ?? "")}`);
     this.restartTimer = setTimeout(() => {
       this.restartTimer = null;
       this.proc = null;
@@ -304,7 +305,7 @@ export class MjpegPipeline {
       lastFrameAt: this.lastFrameAt,
       viewers: this.viewerCount,
       frames: this.frames,
-      error: this.lastError,
+      error: redactSecrets(this.lastError ?? ""),
     };
   }
 

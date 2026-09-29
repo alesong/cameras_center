@@ -13,6 +13,8 @@
 
 import net from "node:net";
 import os from "node:os";
+import { existsSync, readdirSync } from "node:fs";
+import { join, delimiter } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
@@ -112,7 +114,11 @@ function tryConnect(ip, port, timeout) {
 // ---------------------------------------------------------------------------
 // Sondas de protocolo
 // ---------------------------------------------------------------------------
-async function probeRtsp(ip, port, timeout = 3000) {
+// Algunas cámaras (O-KAM/EZVIZ) no contestan a `DESCRIBE /` pero sí a una ruta
+// concreta, así que probamos varias hasta encontrar un servidor RTSP vivo.
+const RTSP_PROBE_URIS = ["/tcp/av0_0", "/", "/live", "/Streaming/Channels/101", "/h264_preview_01"];
+
+async function rtspRequest(ip, port, uri, timeout = 2500) {
   return new Promise((resolve) => {
     const socket = new net.Socket();
     let buffer = "";
@@ -125,7 +131,10 @@ async function probeRtsp(ip, port, timeout = 3000) {
     };
     socket.setTimeout(timeout);
     socket.on("connect", () => {
-      socket.write(`OPTIONS rtsp://${ip}:${port}/ RTSP/1.0\r\nCSeq: 1\r\n\r\n`);
+      // DESCRIBE en vez de OPTIONS: cámaras como la O-KAM ignoran OPTIONS y
+      // cierran el socket, lo que daba el falso negativo "no habla RTSP".
+      // Un 401 ya prueba que hay un servidor RTSP con Digest detrás.
+      socket.write(`DESCRIBE rtsp://${ip}:${port}${uri} RTSP/1.0\r\nCSeq: 1\r\nAccept: application/sdp\r\n\r\n`);
     });
     socket.on("data", (chunk) => {
       buffer += chunk.toString("utf8");
@@ -136,6 +145,14 @@ async function probeRtsp(ip, port, timeout = 3000) {
     socket.on("close", () => done({ ok: buffer.includes("RTSP/1.0"), banner: buffer.split("\r\n")[0] ?? "" }));
     socket.connect(port, ip);
   });
+}
+
+async function probeRtsp(ip, port) {
+  for (const uri of RTSP_PROBE_URIS) {
+    const res = await rtspRequest(ip, port, uri);
+    if (res.ok) return { ...res, uri };
+  }
+  return { ok: false, banner: "", uri: null };
 }
 
 async function probeHttp(ip, port, timeout = 3000) {
@@ -164,10 +181,38 @@ async function probeHttp(ip, port, timeout = 3000) {
   });
 }
 
+function findFfprobe() {
+  const bin = process.platform === "win32" ? "ffprobe.exe" : "ffprobe";
+  for (const dir of (process.env.PATH ?? "").split(delimiter)) {
+    if (!dir) continue;
+    const candidate = join(dir, bin);
+    if (existsSync(candidate)) return candidate;
+  }
+  if (process.platform === "win32") {
+    // FFmpeg instalado por winget pero no añadido al PATH (caso de esta máquina)
+    const packages = join(process.env.LOCALAPPDATA ?? "", "Microsoft", "WinGet", "Packages");
+    try {
+      for (const pkg of readdirSync(packages)) {
+        if (!/ffmpeg/i.test(pkg)) continue;
+        for (const sub of readdirSync(join(packages, pkg))) {
+          const candidate = join(packages, pkg, sub, "bin", bin);
+          if (existsSync(candidate)) return candidate;
+        }
+      }
+    } catch {
+      // no hay carpeta de winget: seguimos
+    }
+  }
+  return null;
+}
+
+const FFPROBE = findFfprobe();
+
 async function ffprobe(url) {
+  if (!FFPROBE) return "ERROR: ffprobe no encontrado (instala FFmpeg o añádelo al PATH)";
   try {
     const { stdout } = await execFileAsync(
-      "ffprobe",
+      FFPROBE,
       ["-v", "error", "-rtsp_transport", "tcp", "-i", url, "-show_entries", "stream=codec_name,width,height,avg_frame_rate", "-of", "csv=p=0"],
       { timeout: 15000 },
     );
@@ -220,15 +265,18 @@ async function ffprobe(url) {
     for (const port of rtspPorts) {
       const res = await probeRtsp(host.ip, port);
       console.log(
-        `${" ".repeat(16)}   RTSP ${port}: ${res.ok ? `OK (${res.banner})` : "no habla RTSP (probablemente deshabilitado)"}`,
+        `${" ".repeat(16)}   RTSP ${port}: ${res.ok ? `OK (${res.banner}) en ${res.uri}` : "no habla RTSP (probablemente deshabilitado)"}`,
       );
       if (res.ok && args.user) {
         const candidates = [
+          res.uri, // primero la ruta que ya respondió
+          `/tcp/av0_0`, // EZVIZ / O-KAM
           `/Streaming/Channels/101`,
           `/Streaming/Channels/102`,
           `/h264_preview_01`,
           `/live`,
-        ];
+          `/live/ch00_0`,
+        ].filter((p, i, arr) => p && arr.indexOf(p) === i);
         for (const path of candidates) {
           const url = `rtsp://${args.user}:${args.pass ?? ""}@${host.ip}:${port}${path}`;
           const clean = url.replace(/:[^:@]*@/, ":***@");

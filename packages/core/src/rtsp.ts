@@ -31,6 +31,15 @@ export function redactUrl(url: string): string {
   return url.replace(/\/\/([^:@/]+):([^@/]+)@/, "//$1:***@");
 }
 
+/**
+ * Igual que `redactUrl`, pero para texto libre (los mensajes de error de
+ * FFmpeg contienen la URL de entrada con las credenciales).
+ *   "rtsp://admin:secreto@1.2.3.4 ..." → "rtsp://admin:***@1.2.3.4 ..."
+ */
+export function redactSecrets(text: string): string {
+  return text.replace(/\/\/([^:@/\s]+):([^@\s]+)@/g, "//$1:***@");
+}
+
 /** Extrae el host de cualquier URL de cámara para mostrarlo en la UI. */
 export function extractHost(url: string): string {
   try {
