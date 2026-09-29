@@ -1,0 +1,28 @@
+{
+  "name": "@cameras/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "API REST + WebSocket: registro de camaras, auth y relay de streams (Render)",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsup",
+    "start": "node dist/index.js",
+    "typecheck": "tsc -p ../../tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@cameras/core": "*",
+    "@cameras/protocol": "*",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "socket.io": "^4.8.1"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "tsup": "^8.3.5",
+    "tsx": "^4.19.2"
+  }
+}

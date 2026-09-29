@@ -1,0 +1,18 @@
+{
+  "name": "@cameras/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Utilidades compartidas: cifrado de credenciales, parsing RTSP, API keys",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc -p ../../tsconfig.json --noEmit"
+  }
+}

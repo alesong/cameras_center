@@ -1,0 +1,31 @@
+{
+  "name": "cameras-center",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Monorepo: cliente web + servidor + agent para visualizar camaras IP de la red local en vivo",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n server,agent,web -c blue,magenta,green \"npm run dev -w @cameras/server\" \"npm run dev -w @cameras/agent\" \"npm run dev -w @cameras/web\"",
+    "dev:server": "npm run dev -w @cameras/server",
+    "dev:agent": "npm run dev -w @cameras/agent",
+    "dev:web": "npm run dev -w @cameras/web",
+    "discover": "node tools/lan-scan.mjs",
+    "build": "npm run build --workspaces --if-present",
+    "start": "npm run start -w @cameras/server",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "clean": "node -e \"const f=require('fs'),p=['apps/server/dist','apps/agent/dist','apps/web/dist','node_modules/.vite'];p.forEach(d=>{try{f.rmSync(d,{recursive:true,force:true})}catch(e){}})\""
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "concurrently": "^9.1.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

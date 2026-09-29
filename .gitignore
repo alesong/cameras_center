@@ -1,0 +1,19 @@
+node_modules/
+dist/
+build/
+.vite/
+*.tsbuildinfo
+
+.env
+.env.local
+.env.*.local
+
+.DS_Store
+Thumbs.db
+*.log
+npm-debug.log*
+
+# Grabaciones y snapshots locales del agent (F7)
+data/
+recordings/
+thumbs/
