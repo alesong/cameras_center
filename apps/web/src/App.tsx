@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { CreateCameraSchema, type Camera, type CreateCameraInput } from "@cameras/protocol";
 import { CameraGrid } from "@cameras/ui";
-import { api, type HealthResponse } from "./api";
+import { api, getToken, setToken, type HealthResponse } from "./api";
+import { AuthScreen } from "./AuthScreen";
 
 export function App() {
+  const [authed, setAuthed] = useState(() => Boolean(getToken()));
   const [cameras, setCameras] = useState<Camera[]>([]);
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [offline, setOffline] = useState(false);
@@ -36,10 +38,22 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    if (!authed) return;
     void refresh();
     const id = setInterval(() => void refresh(), 15000);
     return () => clearInterval(id);
-  }, [refresh]);
+  }, [authed, refresh]);
+
+  if (!authed) {
+    return (
+      <AuthScreen
+        onAuthenticated={() => {
+          setAuthed(true);
+          setError(null);
+        }}
+      />
+    );
+  }
 
   async function handleAdd(event: FormEvent) {
     event.preventDefault();
@@ -54,6 +68,7 @@ export function App() {
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+      if ((err as { status?: number }).status === 401) setAuthed(false);
     } finally {
       setBusy(false);
     }
@@ -66,7 +81,13 @@ export function App() {
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+      if ((err as { status?: number }).status === 401) setAuthed(false);
     }
+  }
+
+  function logout() {
+    setToken(null);
+    setAuthed(false);
   }
 
   return (
@@ -76,12 +97,17 @@ export function App() {
           <span className="dot" />
           Cameras Center
         </div>
-        <div className={`server-pill ${offline ? "error" : health ? "ok" : ""}`}>
-          {offline
-            ? "server desconectado"
-            : health
-              ? `server v${health.version} · ${health.env} · uptime ${health.uptimeSec}s`
-              : "conectando…"}
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <div className={`server-pill ${offline ? "error" : health ? "ok" : ""}`}>
+            {offline
+              ? "server desconectado"
+              : health
+                ? `server v${health.version} · ${health.storage?.cameras ?? "?"} · uptime ${health.uptimeSec}s`
+                : "conectando…"}
+          </div>
+          <button className="ghost" type="button" onClick={logout}>
+            Salir
+          </button>
         </div>
       </header>
 
@@ -162,16 +188,15 @@ export function App() {
         )}
       />
 
-      <h2 className="section-title">Estado del proyecto</h2>
+      <h2 className="section-title">Estado</h2>
       <div className="card-panel hint">
         <p style={{ marginTop: 0 }}>
-          <strong>F1:</strong> el <code>agent</code> transcodifica cada cámara con FFmpeg y la sirve
-          en <code>{agentUrl}</code> como MJPEG. Sólo transcodifica mientras alguien la mira
-          (se apaga a los 60 s sin espectadores).
+          <strong>Almacenamiento de cámaras:</strong> {health?.storage?.cameras ?? "…"} ·{" "}
+          <strong>Supabase:</strong> {health?.storage?.supabase ?? "…"}
         </p>
         <p style={{ marginBottom: 0 }}>
-          Para probar sin hardware real, agrega una cámara con tipo <strong>Test</strong> y
-          conexión <code>test://testsrc</code>.
+          Las URLs de conexión se guardan cifradas con AES-256-GCM y jamás se devuelven en la API:
+          sólo el <code>agent</code> las recibe para alimentar a FFmpeg.
         </p>
       </div>
     </div>

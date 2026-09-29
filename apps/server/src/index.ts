@@ -2,11 +2,12 @@ import http from "node:http";
 import express from "express";
 import cors from "cors";
 import { API } from "@cameras/protocol";
-import { config } from "./config";
-import { seedDemo } from "./store";
+import { config, hasSupabase } from "./config";
+import { seedDemo, store } from "./store";
 import { healthRouter } from "./routes/health";
 import { camerasRouter } from "./routes/cameras";
 import { agentRouter } from "./routes/agent";
+import { authRouter } from "./routes/auth";
 import { createGateway } from "./ws/gateway";
 
 const app = express();
@@ -15,6 +16,7 @@ app.use(cors({ origin: config.corsOrigin, credentials: true }));
 app.use(express.json({ limit: "1mb" }));
 
 app.use(healthRouter);
+app.use("/api/auth", authRouter);
 app.use(API.cameras, camerasRouter);
 app.use("/api/agent", agentRouter);
 
@@ -39,11 +41,21 @@ gateway.onStreamRelease((cameraId) => {
   console.log(`[gateway] sin espectadores -> parar ${cameraId}`);
 });
 
-seedDemo();
+async function bootstrap() {
+  try {
+    await seedDemo();
+  } catch (error) {
+    console.warn("[server] seed omitido:", error instanceof Error ? error.message : error);
+  }
 
-httpServer.listen(config.port, () => {
-  console.log(`\n  🖥  server   http://localhost:${config.port}`);
-  console.log(`     health   http://localhost:${config.port}${API.health}`);
-  console.log(`     api      http://localhost:${config.port}${API.cameras}`);
-  console.log(`     ws       origin=${config.corsOrigin}\n`);
-});
+  httpServer.listen(config.port, () => {
+    console.log(`\n  🖥  server   http://localhost:${config.port}`);
+    console.log(`     health   http://localhost:${config.port}${API.health}`);
+    console.log(`     api      http://localhost:${config.port}${API.cameras}`);
+    console.log(`     auth     http://localhost:${config.port}/api/auth/status`);
+    console.log(`     storage  ${store.backend}${hasSupabase ? "" : " (sin SUPABASE_SERVICE_KEY)"}`);
+    console.log(`     ws       origin=${config.corsOrigin}\n`);
+  });
+}
+
+void bootstrap();

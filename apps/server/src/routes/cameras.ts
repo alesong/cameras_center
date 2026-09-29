@@ -1,35 +1,63 @@
 import { Router } from "express";
 import { CreateCameraSchema } from "@cameras/protocol";
-import { store, toPublic } from "../store";
+import { store, toPublicCamera } from "../store";
+import { requireAuth } from "../middleware/auth";
 
 /**
- * Registro de cámaras. F0: memoria.
- * F2: Supabase (tabla `cameras`, `connection` cifrada con CAMERA_ENC_KEY).
+ * Registro de cámaras.
+ *  - Lectura: pública (la UI y los viewers la necesitan sin token).
+ *  - Escritura: requiere JWT (F2).
+ *  - Persistencia: Supabase si está configurado, si no memoria.
  */
 export const camerasRouter = Router();
 
-camerasRouter.get("/", (_req, res) => {
-  res.json({ cameras: store.list().map(toPublic) });
+function handleError(res: import("express").Response, error: unknown, context: string) {
+  console.error(`[cameras] ${context}:`, error);
+  return res.status(500).json({ error: error instanceof Error ? error.message : "Error interno" });
+}
+
+camerasRouter.get("/", async (_req, res) => {
+  try {
+    const cameras = await store.list();
+    res.json({ cameras: cameras.map(toPublicCamera), backend: store.backend });
+  } catch (error) {
+    handleError(res, error, "list");
+  }
 });
 
-camerasRouter.get("/:id", (req, res) => {
-  const camera = store.get(req.params.id);
-  if (!camera) return res.status(404).json({ error: "Camara no encontrada" });
-  res.json({ camera: toPublic(camera) });
+camerasRouter.get("/:id", async (req, res) => {
+  try {
+    const id = req.params.id;
+    if (!id) return res.status(400).json({ error: "Falta el id" });
+    const camera = await store.get(id);
+    if (!camera) return res.status(404).json({ error: "Camara no encontrada" });
+    res.json({ camera: toPublicCamera(camera) });
+  } catch (error) {
+    handleError(res, error, "get");
+  }
 });
 
-camerasRouter.post("/", (req, res) => {
+camerasRouter.post("/", requireAuth, async (req, res) => {
   const parsed = CreateCameraSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: "Payload invalido", issues: parsed.error.issues });
   }
-  const camera = store.create(parsed.data);
-  res.status(201).json({ camera: toPublic(camera) });
+  try {
+    const camera = await store.create(parsed.data, res.locals.userId);
+    res.status(201).json({ camera: toPublicCamera(camera) });
+  } catch (error) {
+    handleError(res, error, "create");
+  }
 });
 
-camerasRouter.delete("/:id", (req, res) => {
-  if (!store.remove(req.params.id)) {
-    return res.status(404).json({ error: "Camara no encontrada" });
+camerasRouter.delete("/:id", requireAuth, async (req, res) => {
+  try {
+    const id = req.params.id;
+    if (!id) return res.status(400).json({ error: "Falta el id" });
+    const removed = await store.remove(id);
+    if (!removed) return res.status(404).json({ error: "Camara no encontrada" });
+    res.status(204).end();
+  } catch (error) {
+    handleError(res, error, "delete");
   }
-  res.status(204).end();
 });

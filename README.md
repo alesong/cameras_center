@@ -50,6 +50,27 @@ npm run dev               # server :4000 · agent :4100 · web :5173
 | API cámaras | http://localhost:4000/api/v1/cameras |
 | Stream MJPEG (agent) | http://localhost:4100/stream/{id}.mjpg |
 
+## Autenticación (F2)
+
+```bash
+# primer usuario (queda como owner)
+curl -X POST http://localhost:4000/api/auth/register \
+  -H 'content-type: application/json' -d '{"email":"yo@local","password":"<tu-password>"}'
+# → {"token":"eyJ..."}
+
+# crear cámara (exige token)
+curl -X POST http://localhost:4000/api/v1/cameras \
+  -H 'content-type: application/json' -H 'authorization: Bearer $TOKEN' \
+  -d '{"name":"Entrada","sourceType":"rtsp","connection":"rtsp://admin:pass@192.168.1.10:554/..."}'
+```
+
+`GET /api/v1/cameras` es público y **no incluye** la URL de conexión; la recibe
+sólo el agent (`/api/agent/cameras`, cabecera `x-agent-token`).
+
+- Sin `SUPABASE_SERVICE_KEY`, el server arranca en **modo memoria** (todo funciona,
+  pero nada persiste). Setup completo: [`docs/SUPABASE.md`](docs/SUPABASE.md).
+- SQL inicial: [`supabase/migrations/0001_init.sql`](supabase/migrations/0001_init.sql).
+
 ## Comandos
 
 | Comando | Descripción |
@@ -64,9 +85,9 @@ npm run dev               # server :4000 · agent :4100 · web :5173
 
 | Fase | Objetivo | Estado |
 |---|---|---|
-| **F0** | Monorepo, tipos compartidos, apps mínimas funcionando | ✅ en curso |
-| **F1** | Agent lee 1 cámara RTSP y se ve en el navegador | ⬜ |
-| **F2** | Supabase + auth JWT + agent autenticado contra el server | ⬜ |
+| **F0** | Monorepo, tipos compartidos, apps mínimas funcionando | ✅ |
+| **F1** | Agent lee 1 cámara RTSP y se ve en el navegador | ✅ |
+| **F2** | Supabase + auth JWT + agent autenticado contra el server | ✅ *(falta pegar `SUPABASE_SERVICE_KEY`)* |
 | **F3** | Relay agent → server → web remoto (multi-cámara) | ⬜ |
 | **F4** | Descubrimiento ONVIF + health + thumbnails en Cloudinary | ⬜ |
 | **F5** | API pública con API keys, docs y rate limits | ⬜ |

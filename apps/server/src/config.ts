@@ -21,6 +21,11 @@ export const config = {
   /** F2: credenciales Supabase */
   supabaseUrl: process.env.SUPABASE_URL ?? "",
   supabaseKey: process.env.SUPABASE_SERVICE_KEY ?? "",
+  supabaseSchema: process.env.SUPABASE_SCHEMA ?? "public",
+  /** Secreto para firmar JWT (HS256) */
+  jwtSecret: process.env.JWT_SECRET ?? "",
+  /** false => sólo se puede registrar el primer usuario */
+  allowRegister: process.env.ALLOW_REGISTER !== "false",
   /** Semilla de ejemplo para probar la UI sin cámaras reales */
   seedDemo: process.env.SEED_DEMO === "true",
   /** Token que debe presentar el agent en /api/agent/* y en el WS */
