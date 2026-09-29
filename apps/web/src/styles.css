@@ -238,3 +238,129 @@ button.ghost {
   padding: 1px 6px;
   font-size: 12px;
 }
+
+/* ------------------------------------------------------------------ *
+ * F5: API keys para terceros
+ * ------------------------------------------------------------------ */
+.muted {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+details.keys-panel {
+  padding: 8px 16px 16px;
+  margin-top: 28px;
+}
+
+details.keys-panel > summary {
+  cursor: pointer;
+  list-style: none;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  user-select: none;
+  padding: 8px 0;
+}
+
+details.keys-panel > summary::-webkit-details-marker {
+  display: none;
+}
+
+details.keys-panel > summary::before {
+  content: "\25B8  ";
+}
+
+details.keys-panel[open] > summary::before {
+  content: "\25BE  ";
+}
+
+details.keys-panel > .hint,
+details.keys-panel > .form-grid,
+details.keys-panel > .keys-table,
+details.keys-panel > .error-banner,
+details.keys-panel > .fresh-key {
+  margin-top: 12px;
+}
+
+fieldset.scopes {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+fieldset.scopes legend {
+  font-size: 11px;
+  color: var(--muted);
+  padding: 0 6px;
+}
+
+fieldset.scopes label {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.fresh-key {
+  border: 1px solid #1f6f45;
+  background: #10241a;
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fresh-key-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.fresh-key code {
+  flex: 1 1 320px;
+  word-break: break-all;
+  background: #0b0c10;
+  border: 1px solid #1f6f45;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 13px;
+  color: #7ff0b2;
+}
+
+.keys-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.keys-table th {
+  text-align: left;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.keys-table td {
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.keys-table tr.revoked td {
+  opacity: 0.55;
+}
+
+.keys-table td:last-child {
+  text-align: right;
+  white-space: nowrap;
+}

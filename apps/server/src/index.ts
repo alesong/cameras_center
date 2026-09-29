@@ -5,21 +5,32 @@ import { API } from "@cameras/protocol";
 import { config, hasSupabase } from "./config";
 import { seedDemo, store } from "./store";
 import { healthRouter } from "./routes/health";
-import { camerasRouter } from "./routes/cameras";
+import { camerasRouter, streamsRouter } from "./routes/cameras";
 import { agentRouter } from "./routes/agent";
 import { authRouter } from "./routes/auth";
+import { keysRouter } from "./routes/keys";
+import { docsRouter } from "./routes/docs";
 import { verifySchema } from "./db/supabase";
 import { createGateway } from "./ws/gateway";
+import { globalRateLimit } from "./middleware/rateLimit";
 
 const app = express();
 
 app.use(cors({ origin: config.corsOrigin, credentials: true }));
 app.use(express.json({ limit: "1mb" }));
 
+// el agent habla por HTTP interno: fuera del rate limit (sólo sale hacia LAN)
+app.use("/api/agent", agentRouter);
+
+// F5: techo global por IP para TODO lo público de la API
+app.use("/api", globalRateLimit);
+
 app.use(healthRouter);
 app.use("/api/auth", authRouter);
 app.use(API.cameras, camerasRouter);
-app.use("/api/agent", agentRouter);
+app.use("/api/v1/streams", streamsRouter); // F5: MJPEG para terceros
+app.use(API.keys, keysRouter);
+app.use(docsRouter); // /api/docs y /api/openapi.json
 
 // 404 JSON (evita que un 404 en HTML rompa a los clientes de API)
 app.use((req, res) => {
@@ -71,6 +82,7 @@ async function bootstrap() {
     console.log(`     health   http://localhost:${config.port}${API.health}`);
     console.log(`     api      http://localhost:${config.port}${API.cameras}`);
     console.log(`     auth     http://localhost:${config.port}/api/auth/status`);
+    console.log(`     docs     http://localhost:${config.port}${API.docs}`);
     console.log(`     storage  ${store.backend}${hasSupabase ? "" : " (sin SUPABASE_SERVICE_KEY)"}`);
     console.log(`     ws       origin=${config.corsOrigin}\n`);
   });

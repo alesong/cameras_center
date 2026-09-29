@@ -6,7 +6,10 @@ import {
   safeParseViewerMessage,
   type StreamProfile,
 } from "@cameras/protocol";
+import { isApiKeyLike } from "@cameras/core";
 import { verifyToken } from "../auth/jwt";
+import { verifyApiKey } from "../keys";
+import { keyLimiter } from "../middleware/rateLimit";
 import { config } from "../config";
 import { captureThumb } from "../thumbs";
 import { frameCache } from "./frames";
@@ -17,11 +20,13 @@ export interface StreamRequest {
   viewers: string[];
 }
 
-/** Estado del WS para `GET /api/health` (F4). */
+/** Estado del WS para `GET /api/health` (F4/F5). */
 export interface GatewayStats {
   connected: number;
   agents: number;
   viewers: number;
+  /** Espectadores que llegan por el endpoint HTTP MJPEG (F5). */
+  http: number;
   cameras: Array<{ cameraId: string; viewers: number }>;
 }
 
@@ -36,6 +41,9 @@ export interface Gateway {
   broadcastStatus(cameraId: string, status: string): void;
   /** Resumen de conexiones (agentes conectados, espectadores por cámara). */
   stats(): GatewayStats;
+  /** Espectador HTTP (endpoint MJPEG): pide/apaga el stream del agent. */
+  acquire(cameraId: string): void;
+  release(cameraId: string): void;
 }
 
 const AGENT_ROOM = "agents";
@@ -65,11 +73,20 @@ export function createGateway(httpServer: HttpServer): Gateway {
   const streamRequestCbs: Array<(request: StreamRequest) => void> = [];
   const streamReleaseCbs: Array<(cameraId: string) => void> = [];
 
-  const viewerCount = (cameraId: string) => io.sockets.adapter.rooms.get(cameraRoom(cameraId))?.size ?? 0;
+  /**
+   * Espectadores que NO vienen por socket.io: el endpoint HTTP MJPEG
+   * `GET /api/v1/streams/:id.mjpg` cuenta también (F5), para que el agent
+   * arranque aunque el tercero no abra WebSocket.
+   */
+  const httpViewers = new Map<string, number>();
+
+  const roomSize = (cameraId: string) => io.sockets.adapter.rooms.get(cameraRoom(cameraId))?.size ?? 0;
+  const viewerCount = (cameraId: string) => roomSize(cameraId) + (httpViewers.get(cameraId) ?? 0);
 
   const requestStream = (cameraId: string, profile: StreamProfile = "remote") => {
     const viewers = [...(io.sockets.adapter.rooms.get(cameraRoom(cameraId)) ?? [])];
-    if (viewers.length === 0) return;
+    // puede que el único espectador sea el endpoint MJPEG (sin sockets)
+    if (viewers.length === 0 && (httpViewers.get(cameraId) ?? 0) === 0) return;
     io.to(AGENT_ROOM).emit(CHANNELS.serverStartStream, {
       type: "server:startStream",
       cameraId,
@@ -82,6 +99,21 @@ export function createGateway(httpServer: HttpServer): Gateway {
   const releaseStream = (cameraId: string, reason: "no-viewers" | "disabled" | "shutdown" = "no-viewers") => {
     io.to(AGENT_ROOM).emit(CHANNELS.serverStopStream, { type: "server:stopStream", cameraId, reason });
     for (const cb of streamReleaseCbs) cb(cameraId);
+  };
+
+  /** Un cliente HTTP entra a mirar (pide el stream si era el primero). */
+  const acquire = (cameraId: string): void => {
+    const wasEmpty = viewerCount(cameraId) === 0;
+    httpViewers.set(cameraId, (httpViewers.get(cameraId) ?? 0) + 1);
+    if (wasEmpty) requestStream(cameraId, "remote");
+  };
+
+  /** Un cliente HTTP se va; al llegar a 0 se apaga el agent. */
+  const release = (cameraId: string): void => {
+    const next = (httpViewers.get(cameraId) ?? 0) - 1;
+    if (next > 0) httpViewers.set(cameraId, next);
+    else httpViewers.delete(cameraId);
+    if (viewerCount(cameraId) === 0) releaseStream(cameraId);
   };
 
   /** Repetir el pedido a un agent que (re)conecta: si hay espectadores, que arranque. */
@@ -103,10 +135,26 @@ export function createGateway(httpServer: HttpServer): Gateway {
       socket.data.role = "agent"; // sólo desarrollo sin AGENT_TOKEN
       return next();
     }
+
+    // F5: una tercero puede ver el stream con API key (scope `stream`)
+    if (isApiKeyLike(token)) {
+      try {
+        const key = await verifyApiKey(token);
+        if (!key) return next(new Error("api-key-invalida"));
+        if (!key.scopes.includes("stream")) return next(new Error("scope-stream"));
+        socket.data.role = "viewer";
+        socket.data.principal = { type: "apikey", id: key.id, rpm: key.rpm };
+        return next();
+      } catch {
+        return next(new Error("api-key-invalida"));
+      }
+    }
+
     try {
       const payload = await verifyToken(token);
       socket.data.role = "viewer";
       socket.data.userId = payload.sub;
+      socket.data.principal = { type: "jwt", id: payload.sub };
       return next();
     } catch {
       return next(new Error("no-autorizado"));
@@ -173,23 +221,36 @@ export function createGateway(httpServer: HttpServer): Gateway {
     });
 
     // --- Viewers ------------------------------------------------------------
-    socket.on(CHANNELS.viewerSubscribe, (raw, ack?: (r: { ok: boolean }) => void) => {
-      if (socket.data.role !== "viewer") return ack?.({ ok: false });
-      const parsed = safeParseViewerMessage({ ...(raw as object), type: "viewer:subscribe" });
-      if (!parsed.success) return ack?.({ ok: false });
+    socket.on(
+      CHANNELS.viewerSubscribe,
+      (raw, ack?: (r: { ok: boolean; error?: string; retryAfterSec?: number }) => void) => {
+        if (socket.data.role !== "viewer") return ack?.({ ok: false });
+        const parsed = safeParseViewerMessage({ ...(raw as object), type: "viewer:subscribe" });
+        if (!parsed.success) return ack?.({ ok: false });
 
-      const { cameraId } = parsed.data;
-      const wasEmpty = viewerCount(cameraId) === 0;
-      socket.join(cameraRoom(cameraId));
-      socket.data.subscriptions = [...new Set([...(socket.data.subscriptions ?? []), cameraId])];
+        // F5: una API key también consume cuota al suscribirse al stream
+        const principal = socket.data.principal as { type?: string; id?: string; rpm?: number } | undefined;
+        if (principal?.type === "apikey") {
+          const rpm = principal.rpm && principal.rpm > 0 ? principal.rpm : 60;
+          const verdict = keyLimiter.take(`key:${principal.id}`, rpm);
+          if (!verdict.allowed) {
+            return ack?.({ ok: false, error: "Límite de peticiones excedido", retryAfterSec: verdict.resetSec });
+          }
+        }
 
-      if (wasEmpty) requestStream(cameraId, "remote");
-      // devolver el último frame cacheado para que no haya pantalla negra.
-      // seq=-1 marca que es una imagen de "puesta al día" y no un frame en vivo.
-      const cached = frameCache.get(cameraId);
-      if (cached) socket.emit(CHANNELS.streamFrame, { ...cached.header, seq: -1 }, cached.data);
-      ack?.({ ok: true });
-    });
+        const { cameraId } = parsed.data;
+        const wasEmpty = viewerCount(cameraId) === 0;
+        socket.join(cameraRoom(cameraId));
+        socket.data.subscriptions = [...new Set([...(socket.data.subscriptions ?? []), cameraId])];
+
+        if (wasEmpty) requestStream(cameraId, "remote");
+        // devolver el último frame cacheado para que no haya pantalla negra.
+        // seq=-1 marca que es una imagen de "puesta al día" y no un frame en vivo.
+        const cached = frameCache.get(cameraId);
+        if (cached) socket.emit(CHANNELS.streamFrame, { ...cached.header, seq: -1 }, cached.data);
+        ack?.({ ok: true });
+      },
+    );
 
     socket.on(CHANNELS.viewerUnsubscribe, (raw, ack?: (r: { ok: boolean }) => void) => {
       const parsed = safeParseViewerMessage({ ...(raw as object), type: "viewer:unsubscribe" });
@@ -213,6 +274,8 @@ export function createGateway(httpServer: HttpServer): Gateway {
   return {
     io,
     viewerCount,
+    acquire,
+    release,
     onStreamRequest: (cb) => streamRequestCbs.push(cb),
     onStreamRelease: (cb) => streamReleaseCbs.push(cb),
     broadcastStatus: (cameraId, status) => {
@@ -229,7 +292,15 @@ export function createGateway(httpServer: HttpServer): Gateway {
           viewers += sockets.size;
         }
       }
-      return { connected: io.sockets.sockets.size, agents, viewers, cameras };
+      // sumar los espectadores HTTP (endpoint MJPEG) que no viven en rooms
+      let http = 0;
+      for (const count of httpViewers.values()) http += count;
+      for (const [cameraId, count] of httpViewers) {
+        const existing = cameras.find((c) => c.cameraId === cameraId);
+        if (existing) existing.viewers += count;
+        else cameras.push({ cameraId, viewers: count });
+      }
+      return { connected: io.sockets.sockets.size, agents, viewers: viewers + http, http, cameras };
     },
   };
 }

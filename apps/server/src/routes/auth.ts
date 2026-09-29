@@ -4,6 +4,7 @@ import { hashPassword, verifyPassword } from "../auth/password";
 import { signToken } from "../auth/jwt";
 import { canRegister, userStore } from "../db/users";
 import { requireAuth } from "../middleware/auth";
+import { authRateLimit } from "../middleware/rateLimit";
 import { config } from "../config";
 
 const CredentialsSchema = z.object({
@@ -24,7 +25,7 @@ authRouter.get("/status", async (_req, res) => {
   });
 });
 
-authRouter.post("/register", async (req, res) => {
+authRouter.post("/register", authRateLimit, async (req, res) => {
   const parsed = CredentialsSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: "Payload inválido", issues: parsed.error.issues });
@@ -55,7 +56,7 @@ function schemaAware(error: unknown, fallback: string): string {
     : fallback;
 }
 
-authRouter.post("/login", async (req, res) => {
+authRouter.post("/login", authRateLimit, async (req, res) => {
   const parsed = CredentialsSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: "Payload inválido", issues: parsed.error.issues });

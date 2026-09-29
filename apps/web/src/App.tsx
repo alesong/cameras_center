@@ -3,6 +3,7 @@ import { CreateCameraSchema, type Camera, type CreateCameraInput } from "@camera
 import { CameraGrid } from "@cameras/ui";
 import { api, getToken, setToken, type HealthResponse } from "./api";
 import { AuthScreen } from "./AuthScreen";
+import { KeysPanel } from "./KeysPanel";
 import { useRelayFrames } from "./useRelayFrames";
 
 /** Fuente de cada cámara: `lan` = MJPEG directo del agent; `relay` = vía server (WS). */
@@ -269,6 +270,13 @@ export function App() {
         )}
       />
 
+      <KeysPanel
+        onAuthLost={() => {
+          setAuthed(false);
+          setError(null);
+        }}
+      />
+
       <h2 className="section-title">Estado</h2>
       <div className="card-panel hint">
         <p style={{ marginTop: 0 }}>
@@ -278,7 +286,23 @@ export function App() {
         <p>
           <strong>Cloudinary:</strong> {health?.cloudinary ? `${health.cloudinary.status} · ${health.cloudinary.thumbnails} miniaturas · ${health.cloudinary.uploads} subidas` : "…"} ·{" "}
           <strong>Conexiones:</strong>{" "}
-          {health?.ws ? `${health.ws.agents} agent · ${health.ws.viewers} espectadores` : "…"}
+          {health?.ws
+            ? `${health.ws.agents} agent · ${health.ws.viewers} espectadores${health.ws.http ? ` (${health.ws.http} por MJPEG)` : ""}`
+            : "…"}
+        </p>
+        <p>
+          <strong>API keys:</strong>{" "}
+          {health?.apiKeys
+            ? `${health.apiKeys.backend} · ${health.apiKeys.active ?? 0} activas de ${health.apiKeys.total ?? 0}`
+            : "…"}{" "}
+          · <strong>Límites:</strong>{" "}
+          {health?.rateLimit
+            ? `${health.rateLimit.global.rpm}/min por IP · ${health.rateLimit.principal.blocked ?? 0} peticiones 429`
+            : "…"}{" "}
+          · <strong>Docs:</strong>{" "}
+          <a href="/api/docs" target="_blank" rel="noreferrer">
+            /api/docs
+          </a>
         </p>
         <p style={{ marginBottom: 0 }}>
           Las URLs de conexión se guardan cifradas con AES-256-GCM y jamás se devuelven en la API:

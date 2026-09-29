@@ -59,7 +59,14 @@ export interface HealthResponse {
   uptimeSec: number;
   storage?: { cameras: string; supabase: string };
   /** F3: conexiones WS vivas */
-  ws?: { connected: number; agents: number; viewers: number; cameras: Array<{ cameraId: string; viewers: number }> };
+  ws?: {
+    connected: number;
+    agents: number;
+    viewers: number;
+    /** F5: espectadores del endpoint MJPEG */
+    http?: number;
+    cameras: Array<{ cameraId: string; viewers: number }>;
+  };
   /** F4: miniaturas en Cloudinary */
   cloudinary?: {
     configured: boolean;
@@ -71,6 +78,13 @@ export interface HealthResponse {
     thumbnails: number;
     lastOkAt: string | null;
     lastError: string | null;
+  };
+  /** F5: API keys de terceros y límites de peticiones */
+  apiKeys?: { backend: string; total?: number; active?: number; revoked?: number; error?: string };
+  rateLimit?: {
+    global: { rpm: number; buckets?: number; requests?: number; blocked?: number };
+    auth: { rpm: number; buckets?: number; requests?: number; blocked?: number };
+    principal: { buckets?: number; requests?: number; blocked?: number };
   };
 }
 
@@ -84,6 +98,17 @@ export interface AuthStatus {
 export interface AuthResponse {
   token: string;
   user: { id: string; email: string; role: string };
+}
+
+/** F5: API key de un tercero (nunca incluye la clave en claro). */
+export interface ApiKeyInfo {
+  id: string;
+  label: string;
+  scopes: string[];
+  rateLimit: number;
+  revoked: boolean;
+  createdAt: string;
+  lastUsedAt: string | null;
 }
 
 export const api = {
@@ -124,6 +149,16 @@ export const api = {
 
   deleteCamera: async (id: string): Promise<void> => {
     await request<void>(API.camera(id), { method: "DELETE" });
+  },
+
+  /** F5: API keys para terceros. */
+  keys: {
+    list: async (): Promise<ApiKeyInfo[]> => (await request<{ keys: ApiKeyInfo[] }>(API.keys)).keys,
+    create: async (payload: { label: string; scopes?: string[]; rate_limit?: number }): Promise<{ key: string; apikey: ApiKeyInfo }> =>
+      request<{ key: string; apikey: ApiKeyInfo }>(API.keys, { method: "POST", body: JSON.stringify(payload) }),
+    revoke: async (id: string): Promise<void> => {
+      await request<void>(API.key(id), { method: "DELETE" });
+    },
   },
 };
 

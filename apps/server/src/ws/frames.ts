@@ -16,6 +16,7 @@ export interface CachedFrame {
  */
 class FrameCache {
   private frames = new Map<string, CachedFrame>();
+  private listeners = new Map<string, Set<(frame: CachedFrame) => void>>();
   /** Máx. cámaras cacheadas (una foto por cámara, ~100 KB c/u). */
   private limit = 64;
 
@@ -32,7 +33,39 @@ class FrameCache {
       }
       if (oldestKey) this.frames.delete(oldestKey);
     }
-    this.frames.set(cameraId, { header, data, receivedAt: Date.now() });
+    const frame: CachedFrame = { header, data, receivedAt: Date.now() };
+    this.frames.set(cameraId, frame);
+    this.notify(cameraId, frame);
+  }
+
+  /**
+   * Suscripción en vivo a los frames de una cámara (F5: sirve el endpoint
+   * MJPEG `GET /api/v1/streams/:id.mjpg`). Devuelve la función de baja.
+   */
+  on(cameraId: string, listener: (frame: CachedFrame) => void): () => void {
+    let set = this.listeners.get(cameraId);
+    if (!set) {
+      set = new Set();
+      this.listeners.set(cameraId, set);
+    }
+    set.add(listener);
+    return () => {
+      const current = this.listeners.get(cameraId);
+      current?.delete(listener);
+      if (current && current.size === 0) this.listeners.delete(cameraId);
+    };
+  }
+
+  private notify(cameraId: string, frame: CachedFrame): void {
+    const set = this.listeners.get(cameraId);
+    if (!set) return;
+    for (const listener of set) {
+      try {
+        listener(frame);
+      } catch {
+        // un suscriptor roto no debe tumbar el relay
+      }
+    }
   }
 
   get(cameraId: string): CachedFrame | undefined {

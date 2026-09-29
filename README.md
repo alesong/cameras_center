@@ -103,8 +103,8 @@ Detalles que importan:
 - **Rate**: `RELAY_FPS` (por defecto 6) limita lo que sube por la WAN.
 - **Auth**: el WS valida en el handshake (`auth.token` = AGENT_TOKEN para el
   agent, JWT para los espectadores) y rechaza todo lo demás.
-- **`GET /api/v1/cameras/:id/frame.jpg`** (JWT) devuelve el último JPEG: fallback
-  para quien no pueda abrir WebSocket y base de F5/F6.
+- **`GET /api/v1/cameras/:id/frame.jpg`** (JWT o API key) devuelve el último
+  JPEG: fallback para quien no pueda abrir WebSocket y base de F5/F6.
 - Al suscribirse llega primero el último frame cacheado con `seq: -1`
   ("puesta al día") para no dejar pantalla negra.
 
@@ -157,6 +157,60 @@ app**. Autenticación WS-Security *UsernameToken* (PasswordDigest) + Basic HTTP.
 > **no responden**: no hablan ONVIF. Para saber qué devuelve la sonda contra una
 > cámara real sin tenerla a mano: `npm run test:onvif` (mock SOAP local, 18 checks).
 
+## API pública para terceros (F5)
+
+La razón de ser del proyecto: que **otras apps** consuman las cámaras sin
+compartir el JWT de la UI.
+
+```bash
+# 1) crear la clave (se devuelve UNA sola vez: en la BD sólo está su hash)
+curl -X POST http://localhost:4000/api/v1/keys \
+  -H "Authorization: Bearer $JWT" -H 'Content-Type: application/json' \
+  -d '{"label":"mi-app","scopes":["read","stream"],"rate_limit":120}'
+
+# 2) usarla
+curl -H "X-API-Key: cc_live_…" http://localhost:4000/api/v1/cameras
+curl -o foto.jpg -H "X-API-Key: cc_live_…" http://localhost:4000/api/v1/cameras/$ID/frame.jpg
+```
+
+| Qué | Ruta | Auth |
+|---|---|---|
+| Listar/crear/claves | `GET/POST /api/v1/keys` · `DELETE /api/v1/keys/:id` | JWT (`owner`) |
+| Cámaras | `GET /api/v1/cameras[/:id]` | pública |
+| Escritura | `POST`/`DELETE /api/v1/cameras` | JWT (nunca API key) |
+| Fotograma | `GET /api/v1/cameras/:id/frame.jpg` | JWT o key (`read`) |
+| Miniaturas | `GET /api/v1/cameras/thumbnails` | JWT o key (`read`) |
+| **Stream MJPEG** | `GET /api/v1/streams/:id.mjpg` | JWT o key (`read`) |
+| Documentación | `GET /api/docs` · `GET /api/openapi.json` | pública |
+
+- **Claves**: formato `cc_live_<40 hex>`; en la BD sólo se guarda su **hash
+  SHA-256**, por eso la clave se muestra una única vez. Scopes `read` (REST) y
+  `stream` (WebSocket). La UI tiene un panel **🔑 API keys** para crearlas y
+  revocarlas.
+- **MJPEG sin SDK**: `…/streams/:id.mjpg` es `multipart/x-mixed-replace`, sirve
+  en un `<img src>`, en VLC o con `ffmpeg -i`. Al abrirlo el server se registra
+  como espectador (`gateway.acquire`) → pide el stream al agent; al cerrarlo lo
+  suelta y FFmpeg se apaga solo. Si 60 s no llega imagen, cierra la conexión.
+- **WebSocket**: `io(url, { auth: { token: <JWT|key> } })` + `viewer:subscribe`
+  → binario `stream:frame`. Una key sin scope `stream` recibe
+  `connect_error: scope-stream`.
+- **Rate limits** en memoria (ventana fija de 60 s), visibles en cada respuesta
+  (`X-RateLimit-Limit/Remaining/Reset`):
+
+  | Bucket | Límite | Variable |
+  |---|---|---|
+  | IP | 300/min | `RATE_LIMIT_RPM` |
+  | API key | su `rate_limit` (60/min por defecto) | por clave |
+  | login/registro | 10/min por IP | `AUTH_RATE_LIMIT_RPM` |
+
+  Al agotarse: `429` + `Retry-After` + cuerpo con `retryAfterSec`.
+- **Docs**: `/api/docs` (HTML autocontenido, sin CDN) y `/api/openapi.json`
+  (OpenAPI 3.0, importable en Postman/Insomnia). Ambos enlazados desde la UI.
+
+```bash
+npm run test:f5        # 62 comprobaciones end-to-end
+```
+
 ## Comandos
 
 | Comando | Descripción |
@@ -173,6 +227,7 @@ app**. Autenticación WS-Security *UsernameToken* (PasswordDigest) + Basic HTTP.
 | `npm run test:relay` | F3: simula un espectador remoto y valida el relay |
 | `npm run test:onvif` | F4: auto-test de la sonda ONVIF contra un mock |
 | `npm run test:f4` | F4: health + thumbnails en Cloudinary end-to-end |
+| `npm run test:f5` | F5: API keys, docs y rate limits end-to-end |
 
 ## Roadmap
 
@@ -183,7 +238,7 @@ app**. Autenticación WS-Security *UsernameToken* (PasswordDigest) + Basic HTTP.
 | **F2** | Supabase + auth JWT + agent autenticado contra el server | ✅ |
 | **F3** | Relay agent → server → web remoto (multi-cámara) | ✅ |
 | **F4** | Descubrimiento ONVIF + health + thumbnails en Cloudinary | ✅ |
-| **F5** | API pública con API keys, docs y rate limits | ⬜ |
+| **F5** | API pública con API keys, docs y rate limits | ✅ |
 | **F6** | Detección de movimiento + snapshots + webhooks | ⬜ |
 | **F7** | Grabación local de clips por eventos | ⬜ |
 

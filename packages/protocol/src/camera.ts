@@ -63,4 +63,10 @@ export const API = {
   cameras: "/api/v1/cameras",
   camera: (id: string) => `/api/v1/cameras/${id}`,
   stream: (id: string) => `/api/v1/streams/${id}.mjpg`,
+  /** F5: API keys de terceros */
+  keys: "/api/v1/keys",
+  key: (id: string) => `/api/v1/keys/${id}`,
+  /** F5: documentación pública */
+  docs: "/api/docs",
+  openapi: "/api/openapi.json",
 } as const;
