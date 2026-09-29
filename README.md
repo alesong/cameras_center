@@ -228,6 +228,7 @@ npm run test:f5        # 62 comprobaciones end-to-end
 | `npm run test:onvif` | F4: auto-test de la sonda ONVIF contra un mock |
 | `npm run test:f4` | F4: health + thumbnails en Cloudinary end-to-end |
 | `npm run test:f5` | F5: API keys, docs y rate limits end-to-end |
+| `npm run test:ui` | Pruebas de interfaz con Chrome headless (capturas en `artifacts/ui`) |
 
 ## Roadmap
 

@@ -24,6 +24,7 @@
     "test:onvif": "node tools/onvif-selftest.mjs",
     "test:f4": "node tools/f4-test.mjs",
     "test:f5": "node tools/f5-test.mjs",
+    "test:ui": "node tools/ui-test.mjs",
     "build": "npm run build --workspaces --if-present",
     "start": "npm run start -w @cameras/server",
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -32,6 +33,7 @@
   "devDependencies": {
     "@types/node": "^22.10.2",
     "concurrently": "^9.1.0",
+    "playwright-core": "^1.63.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   }

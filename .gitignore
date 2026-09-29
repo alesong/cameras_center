@@ -17,3 +17,6 @@ npm-debug.log*
 data/
 recordings/
 thumbs/
+
+# Capturas de pantalla de las pruebas de interfaz (npm run test:ui)
+artifacts/
