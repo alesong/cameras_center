@@ -44,9 +44,16 @@ authRouter.post("/register", async (req, res) => {
     res.status(201).json({ token, user: { id: user.id, email: user.email, role: user.role } });
   } catch (error) {
     console.error("[auth] register:", error);
-    res.status(500).json({ error: "No se pudo crear el usuario" });
+    res.status(500).json({ error: schemaAware(error, "No se pudo crear el usuario") });
   }
 });
+
+/** Traduce el error de PostgREST "tabla no existe" a algo accionable. */
+function schemaAware(error: unknown, fallback: string): string {
+  return /Could not find the table|PGRST205/i.test(String((error as Error)?.message ?? error))
+    ? "Supabase sin migrar: ejecuta supabase/migrations/0001_init.sql en el SQL Editor"
+    : fallback;
+}
 
 authRouter.post("/login", async (req, res) => {
   const parsed = CredentialsSchema.safeParse(req.body);
@@ -62,7 +69,7 @@ authRouter.post("/login", async (req, res) => {
     res.json({ token, user: { id: user.id, email: user.email, role: user.role } });
   } catch (error) {
     console.error("[auth] login:", error);
-    res.status(500).json({ error: "No se pudo iniciar sesión" });
+    res.status(500).json({ error: schemaAware(error, "No se pudo iniciar sesión") });
   }
 });
 

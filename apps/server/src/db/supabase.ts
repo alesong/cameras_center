@@ -20,3 +20,37 @@ export function getSupabase(): SupabaseClient {
   }
   return cached;
 }
+
+/** Tablas que el server necesita (ver supabase/migrations/0001_init.sql). */
+export const REQUIRED_TABLES = ["users", "cameras", "api_keys", "events", "agent_tokens"] as const;
+
+export interface SchemaStatus {
+  ok: boolean;
+  missing: string[];
+  checkedAt: string;
+}
+
+let schemaCache: SchemaStatus | null = null;
+
+/**
+ * Comprueba que existan las tablas. Necesario porque supabase-js NO devuelve
+ * error con `head:true` cuando falta una tabla, y un fallo silencioso aquí
+ * se traduciría en 500s poco explicables más adelante.
+ */
+export async function verifySchema(force = false): Promise<SchemaStatus> {
+  if (schemaCache && !force) return schemaCache;
+  const db = getSupabase();
+  const missing: string[] = [];
+  for (const table of REQUIRED_TABLES) {
+    const { error } = await db.from(table).select("*").limit(1);
+    if (error && /Could not find the table|does not exist|PGRST205/i.test(error.message)) {
+      missing.push(table);
+    }
+  }
+  schemaCache = { ok: missing.length === 0, missing, checkedAt: new Date().toISOString() };
+  return schemaCache;
+}
+
+export function getSchemaStatus(): SchemaStatus | null {
+  return schemaCache;
+}

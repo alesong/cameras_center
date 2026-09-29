@@ -8,6 +8,7 @@ import { healthRouter } from "./routes/health";
 import { camerasRouter } from "./routes/cameras";
 import { agentRouter } from "./routes/agent";
 import { authRouter } from "./routes/auth";
+import { verifySchema } from "./db/supabase";
 import { createGateway } from "./ws/gateway";
 
 const app = express();
@@ -42,6 +43,21 @@ gateway.onStreamRelease((cameraId) => {
 });
 
 async function bootstrap() {
+  if (hasSupabase) {
+    try {
+      const schema = await verifySchema(true);
+      if (!schema.ok) {
+        console.warn(`\n  ⚠️  Supabase: faltan tablas (${schema.missing.join(", ")})`);
+        console.warn("     Ejecuta supabase/migrations/0001_init.sql en el SQL Editor");
+        console.warn("     Verifica con: npm run db:ping\n");
+      } else {
+        console.log("  ✅ Supabase: esquema completo\n");
+      }
+    } catch (error) {
+      console.warn("  ⚠️  No se pudo verificar el esquema:", error instanceof Error ? error.message : error);
+    }
+  }
+
   try {
     await seedDemo();
   } catch (error) {

@@ -17,6 +17,7 @@
     "dev:agent": "npm run dev -w @cameras/agent",
     "dev:web": "npm run dev -w @cameras/web",
     "discover": "node tools/lan-scan.mjs",
+    "db:ping": "node tools/db-ping.mjs",
     "build": "npm run build --workspaces --if-present",
     "start": "npm run start -w @cameras/server",
     "typecheck": "tsc -p tsconfig.json --noEmit",
