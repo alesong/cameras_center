@@ -33,10 +33,18 @@ const check = (ok, label) => {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // --- auth ------------------------------------------------------------------
+// Credenciales del test en .env (nunca en el repositorio).
+const EMAIL = process.env.TEST_EMAIL || val("TEST_EMAIL") || "";
+const PASSWORD = process.env.TEST_PASSWORD || val("TEST_PASSWORD") || "";
+if (!EMAIL || !PASSWORD) {
+  console.error("Faltan TEST_EMAIL y TEST_PASSWORD en .env (no se guardan contraseñas en el repo)");
+  process.exit(2);
+}
+
 const login = await fetch(`${BASE}/api/auth/login`, {
   method: "POST",
   headers: { "content-type": "application/json" },
-  body: JSON.stringify({ email: "owner@cam.test", password: "<tu-password>" }),
+  body: JSON.stringify({ email: EMAIL, password: PASSWORD }),
 }).then((r) => r.json());
 const token = login.token;
 check(Boolean(token), "login → JWT");
