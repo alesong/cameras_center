@@ -1,8 +1,12 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { CreateCameraSchema, type Camera, type CreateCameraInput } from "@cameras/protocol";
 import { CameraGrid } from "@cameras/ui";
 import { api, getToken, setToken, type HealthResponse } from "./api";
 import { AuthScreen } from "./AuthScreen";
+import { useRelayFrames } from "./useRelayFrames";
+
+/** Fuente de cada cámara: `lan` = MJPEG directo del agent; `relay` = vía server (WS). */
+type SourceMode = "lan" | "relay";
 
 export function App() {
   const [authed, setAuthed] = useState(() => Boolean(getToken()));
@@ -20,9 +24,38 @@ export function App() {
   /** URL base del servidor de streams MJPEG del agent (visión en LAN). */
   const agentUrl = (import.meta.env.VITE_AGENT_URL as string | undefined) ?? "http://localhost:4100";
 
-  const streamUrls: Record<string, string> = live
-    ? Object.fromEntries(cameras.map((c) => [c.id, `${agentUrl}/stream/${c.id}.mjpg`]))
-    : {};
+  // --- F3: origen de cada imagen ------------------------------------------
+  // Por defecto se intenta el directo del agent (más rápido, sin pasar por el
+  // server). Si falla (estamos fuera de la LAN) se cambia automáticamente al
+  // relay por WebSocket: agent → server → navegador.
+  const [sourceModes, setSourceModes] = useState<Record<string, SourceMode>>({});
+  const sourceOf = (cameraId: string): SourceMode => sourceModes[cameraId] ?? "lan";
+
+  const relayIds = useMemo(
+    () => (live ? cameras.filter((c) => sourceOf(c.id) === "relay").map((c) => c.id) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [cameras, live, sourceModes],
+  );
+  const relayUrls = useRelayFrames(relayIds);
+
+  const streamUrls: Record<string, string | undefined> = {};
+  if (live) {
+    for (const camera of cameras) {
+      streamUrls[camera.id] =
+        sourceOf(camera.id) === "relay" ? relayUrls[camera.id] : `${agentUrl}/stream/${camera.id}.mjpg`;
+    }
+  }
+
+  const handleStreamError = useCallback((cameraId: string) => {
+    setSourceModes((prev) => (prev[cameraId] === "lan" ? { ...prev, [cameraId]: "relay" } : prev));
+  }, []);
+
+  const toggleSource = (cameraId: string) => {
+    setSourceModes((prev) => ({
+      ...prev,
+      [cameraId]: (prev[cameraId] ?? "lan") === "lan" ? "relay" : "lan",
+    }));
+  };
 
   const refresh = useCallback(async () => {
     try {
@@ -163,8 +196,20 @@ export function App() {
       <CameraGrid
         cameras={cameras}
         streamUrls={streamUrls}
+        onStreamError={handleStreamError}
         actions={(camera) => (
-          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+          <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+            <button
+              className="ghost"
+              type="button"
+              title={sourceOf(camera.id) === "lan" ? "Directo desde el agent (LAN)" : "Vía server por WebSocket"}
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleSource(camera.id);
+              }}
+            >
+              {sourceOf(camera.id) === "lan" ? "📡 LAN" : "🌐 Servidor"}
+            </button>
             <a
               className="button-link"
               href={`${agentUrl}/snapshot/${camera.id}.jpg`}

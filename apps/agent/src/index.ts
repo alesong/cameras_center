@@ -2,7 +2,8 @@ import { config } from "./config";
 import { checkFfmpeg, ensureDataDir } from "./pipeline/ffmpeg";
 import { PipelineRegistry, type AgentCamera } from "./pipeline/registry";
 import { createStreamServer } from "./local/streamServer";
-import { connectToServer } from "./transport/server";
+import { connectToServer, type ServerTransport } from "./transport/server";
+import { RelayController } from "./relay";
 
 const registry = new PipelineRegistry();
 
@@ -46,12 +47,26 @@ async function main() {
 
   await syncCameras();
 
-  const transport = connectToServer(() => ({
-    agentId: config.agentId,
-    version: config.version,
-    cameras: registry.listCameras(),
-    capabilities: ["rtsp", "mjpeg", "test"],
-  }));
+  // --- Relay al server (F3) --------------------------------------------------
+  // El RelayController necesita el socket y el socket necesita al controller:
+  // se resuelve con un contenedor que se rellena un par de líneas más abajo.
+  const transportRef: { current: ServerTransport | null } = { current: null };
+  const relay = new RelayController(registry, () => transportRef.current?.socket ?? null);
+
+  const transport = connectToServer(
+    () => ({
+      agentId: config.agentId,
+      version: config.version,
+      cameras: registry.listCameras(),
+      capabilities: ["rtsp", "mjpeg", "test"],
+    }),
+    {
+      onStartStream: (cameraId) => relay.attach(cameraId),
+      onStopStream: (cameraId, reason) => relay.detach(cameraId, reason),
+      onDisconnect: () => relay.detachAll("sin conexión al server"),
+    },
+  );
+  transportRef.current = transport;
 
   // --- Servidor de streams local (visión en LAN) ---
   const streamServer = createStreamServer(registry, config.streamPort);
@@ -71,6 +86,7 @@ async function main() {
     console.log("\n[agent] apagando...");
     clearInterval(syncTimer);
     clearInterval(statusTimer);
+    relay.detachAll("shutdown");
     registry.stopAll();
     streamServer.close();
     transport.socket.disconnect();

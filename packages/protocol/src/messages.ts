@@ -177,3 +177,13 @@ export function safeParseViewerMessage(raw: unknown) {
 export function parseStreamMeta(raw: unknown): StreamMeta {
   return StreamMetaSchema.parse(raw);
 }
+
+// Los frames van por el plano binario: este header viaja como primer argumento
+// del evento `stream:frame` y el JPEG como segundo (adjunto binario de socket.io).
+export function parseFrameHeader(raw: unknown): FrameHeader {
+  return FrameHeaderSchema.parse(raw);
+}
+
+export function safeParseFrameHeader(raw: unknown) {
+  return FrameHeaderSchema.safeParse(raw);
+}

@@ -10,6 +10,8 @@ export interface CameraCardProps {
   streamUrl?: string;
   /** Thumbnail de Cloudinary como fallback estático. */
   thumbnailUrl?: string;
+  /** Se dispara si la imagen en vivo falla (p.ej. el agent no está en la LAN). */
+  onStreamError?: () => void;
   activeViewers?: number;
   children?: ReactNode;
   onSelect?: (camera: Camera) => void;
@@ -20,6 +22,7 @@ export function CameraCard({
   status = "unknown",
   streamUrl,
   thumbnailUrl,
+  onStreamError,
   activeViewers,
   children,
   onSelect,
@@ -65,7 +68,10 @@ export function CameraCard({
             src={poster}
             alt={camera.name}
             onLoad={() => setLoaded(true)}
-            onError={() => setImageOk(false)}
+            onError={() => {
+              setImageOk(false);
+              if (streamUrl) onStreamError?.();
+            }}
             style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
           />
         ) : (

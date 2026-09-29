@@ -76,6 +76,42 @@ sólo el agent (`/api/agent/cameras`, cabecera `x-agent-token`).
   pero nada persiste). Setup completo: [`docs/SUPABASE.md`](docs/SUPABASE.md).
 - SQL inicial: [`supabase/migrations/0001_init.sql`](supabase/migrations/0001_init.sql).
 
+## Cómo llega la imagen al navegador (F3)
+
+Hay dos caminos y la app elige el primero que funcione:
+
+```
+(1) LAN (rápido)      navegador ──HTTP MJPEG──► agent :4100 ──► FFmpeg ──► cámara
+(2) Relay (remoto)    navegador ──WS──► server ──WS──► agent ──► FFmpeg ──► cámara
+                       (JWT)           (JWT)            (AGENT_TOKEN)
+```
+
+1. **Directo**: el `<img>` apunta a `VITE_AGENT_URL` (sólo funciona en la LAN).
+2. Si esa imagen falla, la tarjeta **cambia sola a `🌐 Servidor`**: se suscribe
+   por WebSocket al server, éste le pide al agent que arranque FFmpeg y reenvía
+   cada JPEG por `stream:frame` (binario). También se cambia a mano con el
+   botón de cada tarjeta.
+
+Detalles que importan:
+
+- **Sólo hay relay si alguien mira.** Al suscribirse llega `server:startStream`
+  al agent; al dejar de mirar, `server:stopStream` → el agent se desprende y
+  FFmpeg se apaga a los `AGENT_NO_VIEWER_STOP_MS` sin espectadores.
+- **Backpressure**: el server manda los frames con *ack*; si un cliente va lento
+  (más de 4 sin confirmar) se le **saltan** frames en vez de encolarlos. El agent
+  además emite con `socket.volatile`: si la subida se satura, se descarta.
+- **Rate**: `RELAY_FPS` (por defecto 6) limita lo que sube por la WAN.
+- **Auth**: el WS valida en el handshake (`auth.token` = AGENT_TOKEN para el
+  agent, JWT para los espectadores) y rechaza todo lo demás.
+- **`GET /api/v1/cameras/:id/frame.jpg`** (JWT) devuelve el último JPEG: fallback
+  para quien no pueda abrir WebSocket y base de F5/F6.
+- Al suscribirse llega primero el último frame cacheado con `seq: -1`
+  ("puesta al día") para no dejar pantalla negra.
+
+```bash
+npm run test:relay     # 26 comprobaciones; necesita server + agent levantados
+```
+
 ## Comandos
 
 | Comando | Descripción |
@@ -85,6 +121,8 @@ sólo el agent (`/api/agent/cameras`, cabecera `x-agent-token`).
 | `npm run typecheck` | `tsc --noEmit` sobre todo el monorepo |
 | `npm run build` | Compila todos los workspaces |
 | `npm run start` | Arranca el server compilado (producción en Render) |
+| `npm run db:ping` | Comprueba credenciales Supabase y tablas |
+| `npm run test:relay` | F3: simula un espectador remoto y valida el relay |
 
 ## Roadmap
 
@@ -93,7 +131,7 @@ sólo el agent (`/api/agent/cameras`, cabecera `x-agent-token`).
 | **F0** | Monorepo, tipos compartidos, apps mínimas funcionando | ✅ |
 | **F1** | Agent lee 1 cámara RTSP y se ve en el navegador | ✅ |
 | **F2** | Supabase + auth JWT + agent autenticado contra el server | ✅ |
-| **F3** | Relay agent → server → web remoto (multi-cámara) | ⬜ |
+| **F3** | Relay agent → server → web remoto (multi-cámara) | ✅ |
 | **F4** | Descubrimiento ONVIF + health + thumbnails en Cloudinary | ⬜ |
 | **F5** | API pública con API keys, docs y rate limits | ⬜ |
 | **F6** | Detección de movimiento + snapshots + webhooks | ⬜ |

@@ -6,12 +6,15 @@ import type { CameraStatus } from "@cameras/protocol";
 export interface CameraGridProps {
   cameras: Camera[];
   statuses?: Record<string, CameraStatus>;
-  streamUrls?: Record<string, string>;
+  /** undefined = aún no hay imagen (relay conectando). */
+  streamUrls?: Record<string, string | undefined>;
   thumbnails?: Record<string, string>;
   viewers?: Record<string, number>;
   onSelect?: (camera: Camera) => void;
   /** Acciones adicionales en el pie de cada tarjeta (p.ej. eliminar). */
   actions?: (camera: Camera) => ReactNode;
+  /** El stream directo (LAN) falló: el padre debe cambiar a relay por WS. */
+  onStreamError?: (cameraId: string) => void;
   emptyMessage?: string;
 }
 
@@ -23,6 +26,7 @@ export function CameraGrid({
   viewers = {},
   onSelect,
   actions,
+  onStreamError,
   emptyMessage = "Aún no hay cámaras configuradas.",
 }: CameraGridProps) {
   if (cameras.length === 0) {
@@ -58,6 +62,7 @@ export function CameraGrid({
           thumbnailUrl={thumbnails[camera.id]}
           activeViewers={viewers[camera.id]}
           onSelect={onSelect}
+          onStreamError={onStreamError ? () => onStreamError(camera.id) : undefined}
         >
           {actions?.(camera)}
         </CameraCard>

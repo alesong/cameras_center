@@ -31,4 +31,6 @@ export const config = {
   noViewerStopMs: toInt(process.env.AGENT_NO_VIEWER_STOP_MS, 60000),
   /** ms sin frames antes de reiniciar FFmpeg. */
   frameWatchdogMs: toInt(process.env.AGENT_WATCHDOG_MS, 15000),
+  /** fps máximos reenviados al server por relay (F3). */
+  relayFps: toInt(process.env.RELAY_FPS, 6),
 } as const;
