@@ -8,12 +8,21 @@ import {
 } from "@cameras/protocol";
 import { verifyToken } from "../auth/jwt";
 import { config } from "../config";
+import { captureThumb } from "../thumbs";
 import { frameCache } from "./frames";
 
 export interface StreamRequest {
   cameraId: string;
   profile: StreamProfile;
   viewers: string[];
+}
+
+/** Estado del WS para `GET /api/health` (F4). */
+export interface GatewayStats {
+  connected: number;
+  agents: number;
+  viewers: number;
+  cameras: Array<{ cameraId: string; viewers: number }>;
 }
 
 export interface Gateway {
@@ -25,6 +34,8 @@ export interface Gateway {
   onStreamRelease(cb: (cameraId: string) => void): void;
   /** Difunda el estado de una cámara a todos los espectadores. */
   broadcastStatus(cameraId: string, status: string): void;
+  /** Resumen de conexiones (agentes conectados, espectadores por cámara). */
+  stats(): GatewayStats;
 }
 
 const AGENT_ROOM = "agents";
@@ -132,6 +143,9 @@ export function createGateway(httpServer: HttpServer): Gateway {
 
       const { cameraId } = header.data;
       frameCache.set(cameraId, header.data, data);
+      // F4: de paso, sube un thumbnail a Cloudinary (rate-limited y sin-op
+      // en la práctica: sólo trabaja cada THUMB_INTERVAL_MS).
+      void captureThumb(cameraId);
 
       const room = io.sockets.adapter.rooms.get(cameraRoom(cameraId));
       if (!room || room.size === 0) return; // sin espectadores: no reenviar
@@ -203,6 +217,19 @@ export function createGateway(httpServer: HttpServer): Gateway {
     onStreamRelease: (cb) => streamReleaseCbs.push(cb),
     broadcastStatus: (cameraId, status) => {
       io.to(cameraRoom(cameraId)).emit(CHANNELS.agentStatus, { report: { cameraId, status } });
+    },
+    stats: () => {
+      let agents = 0;
+      let viewers = 0;
+      const cameras: Array<{ cameraId: string; viewers: number }> = [];
+      for (const [room, sockets] of io.sockets.adapter.rooms) {
+        if (room === AGENT_ROOM) agents = sockets.size;
+        else if (room.startsWith("cam:") && sockets.size > 0) {
+          cameras.push({ cameraId: room.slice("cam:".length), viewers: sockets.size });
+          viewers += sockets.size;
+        }
+      }
+      return { connected: io.sockets.sockets.size, agents, viewers, cameras };
     },
   };
 }

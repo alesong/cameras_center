@@ -2,6 +2,7 @@ import { Router } from "express";
 import { CreateCameraSchema } from "@cameras/protocol";
 import { store, toPublicCamera } from "../store";
 import { requireAuth } from "../middleware/auth";
+import { captureThumb, latestThumbnails } from "../thumbs";
 import { frameCache } from "../ws/frames";
 
 /**
@@ -54,6 +55,46 @@ camerasRouter.get("/:id/frame.jpg", requireAuth, async (req, res) => {
       .send(frame.data);
   } catch (error) {
     handleError(res, error, "frame");
+  }
+});
+
+/**
+ * Última thumbnail (Cloudinary) de cada cámara — F4.
+ * Se usa como póster estático en la UI; requiere JWT igual que `frame.jpg`.
+ */
+camerasRouter.get("/thumbnails", requireAuth, async (_req, res) => {
+  try {
+    res.json({ thumbnails: await latestThumbnails() });
+  } catch (error) {
+    handleError(res, error, "thumbnails");
+  }
+});
+
+/**
+ * Captura un thumbnail AHORA (saltándose el rate limit automático) — F4.
+ * Devuelve la URL de Cloudinary o un error accionable si no hay imagen.
+ */
+camerasRouter.post("/:id/thumbnail", requireAuth, async (req, res) => {
+  const id = req.params.id;
+  if (!id) return res.status(400).json({ error: "Falta el id" });
+  try {
+    const camera = await store.get(id);
+    if (!camera) return res.status(404).json({ error: "Camara no encontrada" });
+
+    const outcome = await captureThumb(id, true);
+    if (outcome.ok) {
+      return res.json({ thumbnail: { url: outcome.url, publicId: outcome.publicId, bytes: outcome.bytes, ageMs: outcome.ageMs } });
+    }
+
+    const status =
+      outcome.reason === "sin-configurar" ? 503 : outcome.reason === "fallo" ? 502 : outcome.reason === "en-curso" ? 409 : 409;
+    return res.status(status).json({
+      error: outcome.message ?? "No se pudo generar la thumbnail",
+      reason: outcome.reason,
+      ageMs: outcome.ageMs,
+    });
+  } catch (error) {
+    handleError(res, error, "capture-thumb");
   }
 });
 

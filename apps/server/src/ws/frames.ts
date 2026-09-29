@@ -39,6 +39,11 @@ class FrameCache {
     return this.frames.get(cameraId);
   }
 
+  /** Nº de cámaras con frame cacheado (para el health). */
+  size(): number {
+    return this.frames.size;
+  }
+
   delete(cameraId: string): void {
     this.frames.delete(cameraId);
   }

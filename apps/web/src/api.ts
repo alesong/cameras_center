@@ -58,6 +58,20 @@ export interface HealthResponse {
   time: string;
   uptimeSec: number;
   storage?: { cameras: string; supabase: string };
+  /** F3: conexiones WS vivas */
+  ws?: { connected: number; agents: number; viewers: number; cameras: Array<{ cameraId: string; viewers: number }> };
+  /** F4: miniaturas en Cloudinary */
+  cloudinary?: {
+    configured: boolean;
+    folder: string;
+    intervalMs: number;
+    status: string;
+    uploads: number;
+    failures: number;
+    thumbnails: number;
+    lastOkAt: string | null;
+    lastError: string | null;
+  };
 }
 
 export interface AuthStatus {
@@ -86,6 +100,18 @@ export const api = {
   listCameras: async (): Promise<Camera[]> => {
     const data = await request<{ cameras: Camera[] }>(API.cameras);
     return data.cameras;
+  },
+
+  /** F4: última thumbnail (Cloudinary) de cada cámara. */
+  thumbnails: async (): Promise<Record<string, string>> => {
+    const data = await request<{ thumbnails: Record<string, string> }>(`${API.cameras}/thumbnails`);
+    return data.thumbnails ?? {};
+  },
+
+  /** F4: captura y sube un thumbnail ahora. Devuelve su URL o lanza ApiError. */
+  captureThumbnail: async (id: string): Promise<string> => {
+    const data = await request<{ thumbnail: { url: string } }>(`${API.camera(id)}/thumbnail`, { method: "POST" });
+    return data.thumbnail.url;
   },
 
   createCamera: async (payload: CreateCameraPayload): Promise<Camera> => {

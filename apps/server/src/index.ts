@@ -33,6 +33,8 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 
 const httpServer = http.createServer(app);
 const gateway = createGateway(httpServer);
+// el health expone cuántos agents/espectadores hay conectados
+app.locals.gateway = gateway;
 
 // F3: el server pedirá al agent que arranque/pare streams según espectadores.
 gateway.onStreamRequest(({ cameraId, profile }) => {

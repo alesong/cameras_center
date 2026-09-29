@@ -3,6 +3,6 @@
   "compilerOptions": {
     "types": ["node", "vite/client"]
   },
-  "include": ["apps/*/src/**/*", "packages/*/src/**/*", "*.ts"],
+  "include": ["apps/*/src/**/*", "packages/*/src/**/*", "tools/**/*.ts", "*.ts"],
   "exclude": ["**/node_modules", "**/dist"]
 }

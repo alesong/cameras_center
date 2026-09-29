@@ -112,6 +112,51 @@ Detalles que importan:
 npm run test:relay     # 26 comprobaciones; necesita server + agent levantados
 ```
 
+## Miniaturas en Cloudinary (F4)
+
+El server no habla con la cámara: **aprovecha los frames que ya recibe por el
+relay** y cada `THUMB_INTERVAL_MS` (5 min por defecto) sube uno a Cloudinary con
+`public_id` fijo por cámara → se sobrescribe y nunca se acumulan assets.
+
+```
+frame (WS) ──► frameCache ──► uploadJpeg() ──► Cloudinary ──► URL pública
+                                (firma SHA-1)       │
+                                                    ▼
+                                    events (type='thumbnail')  ← última URL
+```
+
+- La URL se guarda en `events` (**sin migración**: la tabla ya tenía
+  `thumbnail_url`), manteniendo **una sola fila por cámara**.
+- **`GET /api/v1/cameras/thumbnails`** (JWT) → `{cameraId: url}`: es el póster
+  de cada tarjeta cuando aún no hay vídeo.
+- **`POST /api/v1/cameras/:id/thumbnail`** (JWT) → captura *ahora* y devuelve
+  la URL. Botón **📸 Capturar** de la UI; si falla, la app cae al snapshot
+  directo del agent (sólo LAN).
+- Las credenciales van en `CLOUDINARY_URL` (`.env`, gitignored); la firma es
+  SHA-1 de los parámetros ordenados + `api_secret`, y la key nunca se loguea.
+
+```bash
+npm run cloud:ping -- --clean   # sube y baja un JPEG de prueba con tu cuenta
+npm run test:f4                 # 23 comprobaciones end-to-end
+```
+
+## Descubrimiento ONVIF (F4)
+
+```bash
+npm run discover:onvif                    # WS-Discovery por UDP (239.255.255.250:3702)
+npm run discover:onvif -- --timeout 8000   # más paciencia
+npm run discover:onvif -- --user admin --pass ****
+npm run discover:onvif -- --xaddr http://192.168.1.10:8000/onvif/device_service
+```
+
+Por cada dispositivo resuelve `GetDeviceInformation → GetCapabilities →
+GetProfiles → GetStreamUri` y devuelve **la URL RTSP lista para pegar en la
+app**. Autenticación WS-Security *UsernameToken* (PasswordDigest) + Basic HTTP.
+
+> Las cámaras "RTSP puro" (como la O-KAM de esta red, que sólo abre el 10554)
+> **no responden**: no hablan ONVIF. Para saber qué devuelve la sonda contra una
+> cámara real sin tenerla a mano: `npm run test:onvif` (mock SOAP local, 18 checks).
+
 ## Comandos
 
 | Comando | Descripción |
@@ -122,7 +167,12 @@ npm run test:relay     # 26 comprobaciones; necesita server + agent levantados
 | `npm run build` | Compila todos los workspaces |
 | `npm run start` | Arranca el server compilado (producción en Render) |
 | `npm run db:ping` | Comprueba credenciales Supabase y tablas |
+| `npm run cloud:ping` | Comprueba credenciales Cloudinary (sube y baja un JPEG) |
+| `npm run discover -- --ip 192.168.1.0/24` | Descubre cámaras por RTSP/ONVIF en la LAN |
+| `npm run discover:onvif` | Descubrimiento ONVIF real por WS-Discovery (UDP) |
 | `npm run test:relay` | F3: simula un espectador remoto y valida el relay |
+| `npm run test:onvif` | F4: auto-test de la sonda ONVIF contra un mock |
+| `npm run test:f4` | F4: health + thumbnails en Cloudinary end-to-end |
 
 ## Roadmap
 
@@ -132,7 +182,7 @@ npm run test:relay     # 26 comprobaciones; necesita server + agent levantados
 | **F1** | Agent lee 1 cámara RTSP y se ve en el navegador | ✅ |
 | **F2** | Supabase + auth JWT + agent autenticado contra el server | ✅ |
 | **F3** | Relay agent → server → web remoto (multi-cámara) | ✅ |
-| **F4** | Descubrimiento ONVIF + health + thumbnails en Cloudinary | ⬜ |
+| **F4** | Descubrimiento ONVIF + health + thumbnails en Cloudinary | ✅ |
 | **F5** | API pública con API keys, docs y rate limits | ⬜ |
 | **F6** | Detección de movimiento + snapshots + webhooks | ⬜ |
 | **F7** | Grabación local de clips por eventos | ⬜ |

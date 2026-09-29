@@ -11,6 +11,7 @@ type SourceMode = "lan" | "relay";
 export function App() {
   const [authed, setAuthed] = useState(() => Boolean(getToken()));
   const [cameras, setCameras] = useState<Camera[]>([]);
+  const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [offline, setOffline] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -59,9 +60,15 @@ export function App() {
 
   const refresh = useCallback(async () => {
     try {
-      const [healthData, cameraList] = await Promise.all([api.health(), api.listCameras()]);
+      const [healthData, cameraList, thumbList] = await Promise.all([
+        api.health(),
+        api.listCameras(),
+        // las thumbnails son opcionales: si fallan, la app sigue funcionando
+        api.thumbnails().catch(() => ({}) as Record<string, string>),
+      ]);
       setHealth(healthData);
       setCameras(cameraList);
+      setThumbnails(thumbList);
       setOffline(false);
       setError(null);
     } catch (err) {
@@ -115,6 +122,32 @@ export function App() {
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       if ((err as { status?: number }).status === 401) setAuthed(false);
+    }
+  }
+
+  /**
+   * F4: pide al server que suba el último frame a Cloudinary y abre la imagen.
+   * Si no puede (sin frame, sin CLOUDINARY_URL…), cae al snapshot directo del
+   * agent — que sólo funciona en la LAN.
+   */
+  async function handleCapture(camera: Camera) {
+    try {
+      const url = await api.captureThumbnail(camera.id);
+      setThumbnails((prev) => ({ ...prev, [camera.id]: url }));
+      window.open(url, "_blank", "noopener");
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      if (status === 401) {
+        setAuthed(false);
+        return;
+      }
+      const message = err instanceof Error ? err.message : String(err);
+      if (sourceOf(camera.id) === "lan") {
+        window.open(`${agentUrl}/snapshot/${camera.id}.jpg`, "_blank", "noopener");
+        setError(`Thumbnail del server no disponible (${message}); se abrió el snapshot directo del agent.`);
+      } else {
+        setError(message);
+      }
     }
   }
 
@@ -196,6 +229,7 @@ export function App() {
       <CameraGrid
         cameras={cameras}
         streamUrls={streamUrls}
+        thumbnails={thumbnails}
         onStreamError={handleStreamError}
         actions={(camera) => (
           <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
@@ -210,15 +244,17 @@ export function App() {
             >
               {sourceOf(camera.id) === "lan" ? "📡 LAN" : "🌐 Servidor"}
             </button>
-            <a
-              className="button-link"
-              href={`${agentUrl}/snapshot/${camera.id}.jpg`}
-              target="_blank"
-              rel="noreferrer"
-              onClick={(e) => e.stopPropagation()}
+            <button
+              className="ghost"
+              type="button"
+              title="Sube el último frame a Cloudinary y lo abre"
+              onClick={(e) => {
+                e.stopPropagation();
+                void handleCapture(camera);
+              }}
             >
-              Capturar
-            </a>
+              📸 Capturar
+            </button>
             <button
               className="ghost"
               type="button"
@@ -238,6 +274,11 @@ export function App() {
         <p style={{ marginTop: 0 }}>
           <strong>Almacenamiento de cámaras:</strong> {health?.storage?.cameras ?? "…"} ·{" "}
           <strong>Supabase:</strong> {health?.storage?.supabase ?? "…"}
+        </p>
+        <p>
+          <strong>Cloudinary:</strong> {health?.cloudinary ? `${health.cloudinary.status} · ${health.cloudinary.thumbnails} miniaturas · ${health.cloudinary.uploads} subidas` : "…"} ·{" "}
+          <strong>Conexiones:</strong>{" "}
+          {health?.ws ? `${health.ws.agents} agent · ${health.ws.viewers} espectadores` : "…"}
         </p>
         <p style={{ marginBottom: 0 }}>
           Las URLs de conexión se guardan cifradas con AES-256-GCM y jamás se devuelven en la API:
